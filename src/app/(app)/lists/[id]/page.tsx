@@ -368,17 +368,6 @@ export default function ListDetailPage() {
           ))}
         </div>
 
-        {/* Show completed toggle */}
-        {checkedCount > 0 && (
-          <button
-            onClick={() => setShowChecked(!showChecked)}
-            className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors my-3 px-2"
-          >
-            <ChevronDown className={`h-3.5 w-3.5 transition-transform ${showChecked ? "rotate-180" : ""}`} />
-            {showChecked ? "Hide" : "Show"} completed ({checkedCount})
-          </button>
-        )}
-
         {/* ── Editor Area ─────────────────────────────────── */}
         <div className="px-2 py-1">
           {editorMode === "text" ? (
@@ -409,6 +398,17 @@ export default function ListDetailPage() {
             </div>
           )}
         </div>
+
+        {/* Show completed toggle — always at bottom */}
+        {checkedCount > 0 && (
+          <button
+            onClick={() => setShowChecked(!showChecked)}
+            className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors my-3 px-2"
+          >
+            <ChevronDown className={`h-3.5 w-3.5 transition-transform ${showChecked ? "rotate-180" : ""}`} />
+            {showChecked ? "Hide" : "Show"} completed ({checkedCount})
+          </button>
+        )}
       </div>
     </div>
   );

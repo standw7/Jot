@@ -3,8 +3,6 @@
 import { useState, useRef, useEffect } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Trash2, GripVertical, ExternalLink, X } from "lucide-react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import type { ListItem } from "@/lib/types";
 
 interface NoteItemProps {
@@ -27,9 +25,7 @@ export function NoteItem({
   onDeleteLink, onDeleteImage,
   onDragStart, onDragOver, onDrop, onDragEnd, isDragOver,
 }: NoteItemProps) {
-  const isCheckbox = item.item_type === "checkbox";
-
-  if (isCheckbox) {
+  if (item.item_type === "checkbox") {
     return (
       <CheckboxItem
         item={item}
@@ -57,7 +53,8 @@ export function NoteItem({
 }
 
 // ── Text Block ────────────────────────────────────────────
-// Freeform text, multi-line. Click to edit. Enter = new line. Save on blur.
+// Freeform text. Shows Obsidian-style live preview when not focused.
+// Click to edit in textarea. Save on blur.
 function TextBlock({
   item, onUpdate, onDelete, onDeleteLink, onDeleteImage,
 }: {
@@ -125,10 +122,15 @@ function TextBlock({
         />
       ) : (
         <div
-          onClick={() => { setEditContent(item.content); setIsEditing(true); }}
-          className="cursor-text prose-sm"
+          onClick={(e) => {
+            // Don't enter edit mode if clicking a link
+            if ((e.target as HTMLElement).tagName === "A") return;
+            setEditContent(item.content);
+            setIsEditing(true);
+          }}
+          className="cursor-text"
         >
-          <MarkdownContent content={item.content} />
+          <LiveMarkdown content={item.content} />
         </div>
       )}
 
@@ -174,7 +176,6 @@ function TextBlock({
 }
 
 // ── Checkbox Item ─────────────────────────────────────────
-// Single-line, interactive: check, drag, delete.
 function CheckboxItem({
   item, onUpdate, onDelete, onToggleCheck,
   onDragStart, onDragOver, onDrop, onDragEnd, isDragOver,
@@ -204,17 +205,13 @@ function CheckboxItem({
 
   function handleSave() {
     const trimmed = editContent.trim();
-    if (!trimmed) {
-      onDelete();
-      return;
-    }
-    if (trimmed !== item.content) {
-      onUpdate({ content: trimmed });
-    }
+    if (!trimmed) { onDelete(); return; }
+    if (trimmed !== item.content) onUpdate({ content: trimmed });
     setIsEditing(false);
   }
 
-  function handleCheck() {
+  function handleCheck(e: React.MouseEvent) {
+    e.stopPropagation();
     setIsChecking(true);
     onToggleCheck();
     if (!item.is_checked) {
@@ -224,40 +221,34 @@ function CheckboxItem({
     }
   }
 
+  function startEditing() {
+    setEditContent(item.content);
+    setIsEditing(true);
+  }
+
   return (
     <div
       draggable
-      onDragStart={(e) => {
-        e.dataTransfer.effectAllowed = "move";
-        onDragStart?.();
-      }}
-      onDragOver={(e) => {
-        e.preventDefault();
-        e.dataTransfer.dropEffect = "move";
-        onDragOver?.(e);
-      }}
-      onDrop={(e) => {
-        e.preventDefault();
-        onDrop?.();
-      }}
+      onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; onDragStart?.(); }}
+      onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; onDragOver?.(e); }}
+      onDrop={(e) => { e.preventDefault(); onDrop?.(); }}
       onDragEnd={() => onDragEnd?.()}
-      className={`group flex items-center gap-2 py-1 px-2 rounded-md hover:bg-accent/50 transition-all ${
+      onClick={!isEditing ? startEditing : undefined}
+      className={`group flex items-center gap-2 py-1 px-2 rounded-md hover:bg-accent/50 transition-all cursor-text ${
         isChecking && !item.is_checked ? "opacity-50 transition-opacity duration-300" : ""
       } ${item.is_checked ? "opacity-50" : ""} ${isDragOver ? "border-t-2 border-primary" : ""}`}
     >
       {/* Drag handle */}
-      <div className="opacity-0 group-hover:opacity-100 cursor-grab flex-shrink-0">
+      <div className="opacity-0 group-hover:opacity-100 cursor-grab flex-shrink-0" onClick={(e) => e.stopPropagation()}>
         <GripVertical className="h-3.5 w-3.5 text-muted-foreground" />
       </div>
 
       {/* Checkbox */}
-      <Checkbox
-        checked={item.is_checked}
-        onCheckedChange={handleCheck}
-        className="h-4 w-4 flex-shrink-0"
-      />
+      <div className="flex-shrink-0" onClick={handleCheck}>
+        <Checkbox checked={item.is_checked} className="h-4 w-4" />
+      </div>
 
-      {/* Content */}
+      {/* Content — click anywhere on row to edit */}
       <div className="flex-1 min-w-0">
         {isEditing ? (
           <input
@@ -265,6 +256,7 @@ function CheckboxItem({
             value={editContent}
             onChange={(e) => setEditContent(e.target.value)}
             onBlur={handleSave}
+            onClick={(e) => e.stopPropagation()}
             onKeyDown={(e) => {
               if (e.key === "Enter") { e.preventDefault(); handleSave(); }
               if (e.key === "Escape") { setEditContent(item.content); setIsEditing(false); }
@@ -273,10 +265,7 @@ function CheckboxItem({
             className="w-full bg-transparent border-none outline-none text-sm"
           />
         ) : (
-          <span
-            onClick={() => { setEditContent(item.content); setIsEditing(true); }}
-            className={`text-sm cursor-text ${item.is_checked ? "line-through text-muted-foreground" : ""}`}
-          >
+          <span className={`text-sm ${item.is_checked ? "line-through text-muted-foreground" : ""}`}>
             {item.content}
           </span>
         )}
@@ -284,7 +273,7 @@ function CheckboxItem({
 
       {/* Delete */}
       <button
-        onClick={onDelete}
+        onClick={(e) => { e.stopPropagation(); onDelete(); }}
         className="opacity-0 group-hover:opacity-100 p-0.5 text-muted-foreground hover:text-destructive transition-all flex-shrink-0"
       >
         <Trash2 className="h-3.5 w-3.5" />
@@ -293,40 +282,149 @@ function CheckboxItem({
   );
 }
 
-// ── Shared Markdown Renderer ──────────────────────────────
-function MarkdownContent({ content }: { content: string }) {
+// ── Obsidian-style Live Markdown ──────────────────────────
+// Shows markdown syntax (dimmed) with live visual styling.
+// Headings are bigger, bold is bold, links are clickable, etc.
+function LiveMarkdown({ content }: { content: string }) {
+  const lines = content.split("\n");
   return (
-    <ReactMarkdown
-      remarkPlugins={[remarkGfm]}
-      components={{
-        p: ({ children }) => <p className="text-sm leading-relaxed whitespace-pre-wrap break-words my-0">{children}</p>,
-        h1: ({ children }) => <h1 className="text-xl font-bold my-0">{children}</h1>,
-        h2: ({ children }) => <h2 className="text-lg font-bold my-0">{children}</h2>,
-        h3: ({ children }) => <h3 className="text-base font-semibold my-0">{children}</h3>,
-        strong: ({ children }) => <strong className="font-bold">{children}</strong>,
-        em: ({ children }) => <em className="italic">{children}</em>,
-        code: ({ children, className }) => {
-          if (className?.includes("language-")) {
-            return <code className="block bg-muted rounded px-2 py-1 text-xs font-mono my-1 overflow-x-auto">{children}</code>;
-          }
-          return <code className="bg-muted rounded px-1 py-0.5 text-xs font-mono">{children}</code>;
-        },
-        pre: ({ children }) => <pre className="my-1">{children}</pre>,
-        a: ({ href, children }) => (
-          <a href={href} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline" onClick={(e) => e.stopPropagation()}>
-            {children}
-          </a>
-        ),
-        ul: ({ children }) => <ul className="list-disc list-inside text-sm my-0.5">{children}</ul>,
-        ol: ({ children }) => <ol className="list-decimal list-inside text-sm my-0.5">{children}</ol>,
-        li: ({ children }) => <li className="text-sm">{children}</li>,
-        blockquote: ({ children }) => (
-          <blockquote className="border-l-2 border-muted-foreground/30 pl-3 text-sm text-muted-foreground italic my-0.5">{children}</blockquote>
-        ),
-        hr: () => <hr className="border-muted my-2" />,
-      }}
-    >
-      {content}
-    </ReactMarkdown>
+    <div className="text-sm leading-relaxed">
+      {lines.map((line, i) => (
+        <LiveLine key={i} line={line} />
+      ))}
+    </div>
   );
+}
+
+function LiveLine({ line }: { line: string }) {
+  // Empty line
+  if (!line) return <div className="h-[1.5em]">{"\u200B"}</div>;
+
+  // Horizontal rule
+  if (/^-{3,}$/.test(line.trim())) return <hr className="border-muted my-1" />;
+
+  // Heading
+  const hMatch = line.match(/^(#{1,3}) (.*)/);
+  if (hMatch) {
+    const level = hMatch[1].length;
+    const cls = level === 1 ? "text-xl font-bold" : level === 2 ? "text-lg font-bold" : "text-base font-semibold";
+    return (
+      <div className={cls}>
+        <span className="text-muted-foreground/40">{hMatch[1]} </span>
+        <InlineMarkdown text={hMatch[2]} />
+      </div>
+    );
+  }
+
+  // Blockquote
+  const bqMatch = line.match(/^(>) (.*)/);
+  if (bqMatch) {
+    return (
+      <div className="border-l-2 border-muted-foreground/30 pl-3 text-muted-foreground italic">
+        <span className="text-muted-foreground/40">&gt; </span>
+        <InlineMarkdown text={bqMatch[2]} />
+      </div>
+    );
+  }
+
+  // Bullet list
+  const bulletMatch = line.match(/^(- )(.*)/);
+  if (bulletMatch) {
+    return (
+      <div>
+        <span className="text-muted-foreground/40">- </span>
+        <InlineMarkdown text={bulletMatch[2]} />
+      </div>
+    );
+  }
+
+  // Numbered list
+  const numMatch = line.match(/^(\d+\. )(.*)/);
+  if (numMatch) {
+    return (
+      <div>
+        <span className="text-muted-foreground/40">{numMatch[1]}</span>
+        <InlineMarkdown text={numMatch[2]} />
+      </div>
+    );
+  }
+
+  // Regular line
+  return <div><InlineMarkdown text={line} /></div>;
+}
+
+// Inline markdown: bold, italic, code, links, strikethrough
+function InlineMarkdown({ text }: { text: string }) {
+  // Process inline patterns with a single regex scan
+  const regex = /(\*\*(.+?)\*\*)|(~~(.+?)~~)|(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)|(`(.+?)`)|\[(.+?)\]\((.+?)\)/g;
+  const parts: React.ReactNode[] = [];
+  let lastIndex = 0;
+  let key = 0;
+  let match;
+
+  while ((match = regex.exec(text)) !== null) {
+    // Text before match
+    if (match.index > lastIndex) {
+      parts.push(text.slice(lastIndex, match.index));
+    }
+
+    if (match[1]) {
+      // Bold: **text**
+      parts.push(
+        <span key={key++}>
+          <span className="text-muted-foreground/40">**</span>
+          <strong>{match[2]}</strong>
+          <span className="text-muted-foreground/40">**</span>
+        </span>
+      );
+    } else if (match[3]) {
+      // Strikethrough: ~~text~~
+      parts.push(
+        <span key={key++}>
+          <span className="text-muted-foreground/40">~~</span>
+          <s>{match[4]}</s>
+          <span className="text-muted-foreground/40">~~</span>
+        </span>
+      );
+    } else if (match[5]) {
+      // Italic: *text*
+      parts.push(
+        <span key={key++}>
+          <span className="text-muted-foreground/40">*</span>
+          <em>{match[5]}</em>
+          <span className="text-muted-foreground/40">*</span>
+        </span>
+      );
+    } else if (match[6]) {
+      // Code: `text`
+      parts.push(
+        <span key={key++}>
+          <span className="text-muted-foreground/40">`</span>
+          <code className="bg-muted rounded px-0.5 font-mono text-[0.85em]">{match[7]}</code>
+          <span className="text-muted-foreground/40">`</span>
+        </span>
+      );
+    } else if (match[8] && match[9]) {
+      // Link: [text](url)
+      const href = /^https?:\/\//.test(match[9]) ? match[9] : `https://${match[9]}`;
+      parts.push(
+        <span key={key++}>
+          <span className="text-muted-foreground/40">[</span>
+          <a href={href} target="_blank" rel="noopener noreferrer" className="text-blue-500 underline" onClick={(e) => e.stopPropagation()}>
+            {match[8]}
+          </a>
+          <span className="text-muted-foreground/40">]({match[9]})</span>
+        </span>
+      );
+    }
+
+    lastIndex = match.index + match[0].length;
+  }
+
+  // Remaining text
+  if (lastIndex < text.length) {
+    parts.push(text.slice(lastIndex));
+  }
+
+  return <>{parts.length > 0 ? parts : text}</>;
 }
