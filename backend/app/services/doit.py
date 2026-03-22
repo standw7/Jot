@@ -2,66 +2,45 @@ import httpx
 
 from app.config import settings
 
+_URL = settings.DOIT_API_URL
+_KEY = settings.DOIT_INTERNAL_API_KEY
+_HEADERS = {"Authorization": f"Bearer {_KEY}"} if _KEY else {}
 
-async def create_task(
-    title: str,
-    description: str | None = None,
-    api_url: str | None = None,
-    api_key: str | None = None,
-) -> dict:
+
+def is_configured() -> bool:
+    return bool(_URL and _KEY)
+
+
+async def create_task(title: str, description: str | None = None) -> dict:
     """Create a task in DoIt."""
-    url = api_url or settings.DOIT_API_URL
-    key = api_key or settings.DOIT_INTERNAL_API_KEY
-    if not url or not key:
+    if not is_configured():
         raise ValueError("DoIt integration not configured")
-
     async with httpx.AsyncClient() as client:
         res = await client.post(
-            f"{url}/tasks",
+            f"{_URL}/tasks",
             json={"title": title, "description": description},
-            headers={"Authorization": f"Bearer {key}"},
+            headers=_HEADERS,
             timeout=10,
         )
         res.raise_for_status()
         return res.json()
 
 
-async def get_task(
-    task_id: str,
-    api_url: str | None = None,
-    api_key: str | None = None,
-) -> dict:
+async def get_task(task_id: str) -> dict:
     """Get a task from DoIt."""
-    url = api_url or settings.DOIT_API_URL
-    key = api_key or settings.DOIT_INTERNAL_API_KEY
-    if not url or not key:
+    if not is_configured():
         raise ValueError("DoIt integration not configured")
-
     async with httpx.AsyncClient() as client:
-        res = await client.get(
-            f"{url}/tasks/{task_id}",
-            headers={"Authorization": f"Bearer {key}"},
-            timeout=10,
-        )
+        res = await client.get(f"{_URL}/tasks/{task_id}", headers=_HEADERS, timeout=10)
         res.raise_for_status()
         return res.json()
 
 
-async def get_projects(
-    api_url: str | None = None,
-    api_key: str | None = None,
-) -> list[dict]:
+async def get_projects() -> list[dict]:
     """Get projects from DoIt."""
-    url = api_url or settings.DOIT_API_URL
-    key = api_key or settings.DOIT_INTERNAL_API_KEY
-    if not url or not key:
+    if not is_configured():
         return []
-
     async with httpx.AsyncClient() as client:
-        res = await client.get(
-            f"{url}/projects",
-            headers={"Authorization": f"Bearer {key}"},
-            timeout=10,
-        )
+        res = await client.get(f"{_URL}/projects", headers=_HEADERS, timeout=10)
         res.raise_for_status()
         return res.json()

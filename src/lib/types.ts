@@ -166,19 +166,14 @@ export interface CalendarEventLinkEmbed {
 
 // ── Settings ───────────────────────────────────────────────
 
-export interface UserSettings {
-  id: string;
-  linkwarden_api_url: string | null;
-  linkwarden_api_key: string | null;
-  doit_api_url: string | null;
-  doit_api_key: string | null;
-  google_refresh_token: string | null;
-  jot_calendar_id: string | null;
+export interface IntegrationStatus {
+  name: string;
+  connected: boolean;
 }
 
-export interface UserSettingsUpdate {
-  linkwarden_api_url?: string | null;
-  linkwarden_api_key?: string | null;
-  doit_api_url?: string | null;
-  doit_api_key?: string | null;
+export interface UserSettings {
+  id: string;
+  integrations: IntegrationStatus[];
+  google_connected: boolean;
+  jot_calendar_id: string | null;
 }

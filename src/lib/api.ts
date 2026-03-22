@@ -12,7 +12,6 @@ import type {
   ItemLink,
   ItemImage,
   UserSettings,
-  UserSettingsUpdate,
 } from "./types";
 
 const BASE_URL = "/api/backend";
@@ -232,11 +231,4 @@ export async function deleteItemImage(listId: string, itemId: string, imageId: s
 
 export async function getSettings(): Promise<UserSettings> {
   return request("/settings");
-}
-
-export async function updateSettings(updates: UserSettingsUpdate): Promise<UserSettings> {
-  return request("/settings", {
-    method: "PUT",
-    body: JSON.stringify(updates),
-  });
 }

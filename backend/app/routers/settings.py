@@ -4,7 +4,9 @@ from sqlalchemy.orm import Session
 from app.deps import get_current_user, get_db
 from app.models.user import User
 from app.models.user_settings import UserSettings
-from app.schemas.settings import UserSettingsResponse, UserSettingsUpdate
+from app.schemas.settings import IntegrationStatus, UserSettingsResponse
+from app.services import doit as doit_service
+from app.services import linkwarden as lw_service
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
@@ -14,7 +16,7 @@ def get_settings(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Get user settings."""
+    """Get user settings and integration status."""
     user_settings = db.query(UserSettings).filter(UserSettings.user_id == current_user.id).first()
     if not user_settings:
         user_settings = UserSettings(user_id=current_user.id)
@@ -22,47 +24,14 @@ def get_settings(
         db.commit()
         db.refresh(user_settings)
 
-    return UserSettingsResponse(
-        id=user_settings.id,
-        linkwarden_api_url=user_settings.linkwarden_api_url,
-        linkwarden_api_key=user_settings.linkwarden_api_key,
-        doit_api_url=user_settings.doit_api_url,
-        doit_api_key=user_settings.doit_api_key,
-        google_connected=bool(user_settings.google_refresh_token),
-        jot_calendar_id=user_settings.jot_calendar_id,
-    )
-
-
-@router.put("/", response_model=UserSettingsResponse)
-def update_settings(
-    body: UserSettingsUpdate,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    """Update user settings."""
-    user_settings = db.query(UserSettings).filter(UserSettings.user_id == current_user.id).first()
-    if not user_settings:
-        user_settings = UserSettings(user_id=current_user.id)
-        db.add(user_settings)
-
-    if body.linkwarden_api_url is not None:
-        user_settings.linkwarden_api_url = body.linkwarden_api_url
-    if body.linkwarden_api_key is not None:
-        user_settings.linkwarden_api_key = body.linkwarden_api_key
-    if body.doit_api_url is not None:
-        user_settings.doit_api_url = body.doit_api_url
-    if body.doit_api_key is not None:
-        user_settings.doit_api_key = body.doit_api_key
-
-    db.commit()
-    db.refresh(user_settings)
+    integrations = [
+        IntegrationStatus(name="Linkwarden", connected=lw_service.is_configured()),
+        IntegrationStatus(name="DoIt", connected=doit_service.is_configured()),
+    ]
 
     return UserSettingsResponse(
         id=user_settings.id,
-        linkwarden_api_url=user_settings.linkwarden_api_url,
-        linkwarden_api_key=user_settings.linkwarden_api_key,
-        doit_api_url=user_settings.doit_api_url,
-        doit_api_key=user_settings.doit_api_key,
+        integrations=integrations,
         google_connected=bool(user_settings.google_refresh_token),
         jot_calendar_id=user_settings.jot_calendar_id,
     )

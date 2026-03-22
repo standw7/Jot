@@ -17,14 +17,6 @@ class UserSettings(Base):
         String(36), ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False
     )
 
-    # Linkwarden integration
-    linkwarden_api_url: Mapped[str | None] = mapped_column(String(500))
-    linkwarden_api_key: Mapped[str | None] = mapped_column(String(500))
-
-    # DoIt integration
-    doit_api_url: Mapped[str | None] = mapped_column(String(500))
-    doit_api_key: Mapped[str | None] = mapped_column(String(500))
-
     # Google Calendar
     google_refresh_token: Mapped[str | None] = mapped_column(Text)
     jot_calendar_id: Mapped[str | None] = mapped_column(String(500))

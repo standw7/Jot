@@ -1,20 +1,15 @@
 from pydantic import BaseModel
 
 
+class IntegrationStatus(BaseModel):
+    name: str
+    connected: bool
+
+
 class UserSettingsResponse(BaseModel):
     id: str
-    linkwarden_api_url: str | None
-    linkwarden_api_key: str | None
-    doit_api_url: str | None
-    doit_api_key: str | None
+    integrations: list[IntegrationStatus]
     google_connected: bool = False
-    jot_calendar_id: str | None
+    jot_calendar_id: str | None = None
 
     model_config = {"from_attributes": True}
-
-
-class UserSettingsUpdate(BaseModel):
-    linkwarden_api_url: str | None = None
-    linkwarden_api_key: str | None = None
-    doit_api_url: str | None = None
-    doit_api_key: str | None = None
