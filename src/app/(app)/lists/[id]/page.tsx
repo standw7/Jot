@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useLayoutEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -64,14 +64,20 @@ export default function ListDetailPage() {
     return end;
   }
 
+  const pendingCursor = useRef<number | null>(null);
+
   function setCursor(pos: number) {
-    requestAnimationFrame(() => {
-      if (textareaRef.current) {
-        textareaRef.current.selectionStart = pos;
-        textareaRef.current.selectionEnd = pos;
-      }
-    });
+    pendingCursor.current = pos;
   }
+
+  // Apply pending cursor position synchronously after React commits the new doc
+  useLayoutEffect(() => {
+    if (pendingCursor.current !== null && textareaRef.current) {
+      textareaRef.current.selectionStart = pendingCursor.current;
+      textareaRef.current.selectionEnd = pendingCursor.current;
+      pendingCursor.current = null;
+    }
+  }, [doc]);
 
   function autoResize(el: HTMLTextAreaElement) {
     el.style.height = "auto";
