@@ -1,14 +1,12 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, forwardRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NoteItem } from "@/components/lists/note-item";
 import {
   ArrowLeft,
-  Type,
-  CheckSquare,
   MoreHorizontal,
   Trash2,
   Pin,
@@ -24,6 +22,21 @@ import * as api from "@/lib/api";
 import { toast } from "sonner";
 import type { JotList, ListItem } from "@/lib/types";
 
+// Detect checkbox prefixes: "[ ]", "[] ", "- [ ]", "- [] "
+// Returns { isCheckbox, cleanContent } — strips the prefix if checkbox
+function parseItemType(raw: string): { itemType: "text" | "checkbox"; content: string } {
+  const trimmed = raw.trimStart();
+  // "- [ ] text" or "- [] text"
+  if (/^-\s*\[\s*\]\s/.test(trimmed)) {
+    return { itemType: "checkbox", content: trimmed.replace(/^-\s*\[\s*\]\s*/, "") };
+  }
+  // "[ ] text" or "[] text"
+  if (/^\[\s*\]\s/.test(trimmed)) {
+    return { itemType: "checkbox", content: trimmed.replace(/^\[\s*\]\s*/, "") };
+  }
+  return { itemType: "text", content: raw };
+}
+
 export default function ListDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -33,7 +46,6 @@ export default function ListDetailPage() {
   const [items, setItems] = useState<ListItem[]>([]);
   const [showChecked, setShowChecked] = useState(false);
   const [checkedCount, setCheckedCount] = useState(0);
-  const [newItemType, setNewItemType] = useState<"text" | "checkbox">("text");
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editTitle, setEditTitle] = useState("");
   const [loading, setLoading] = useState(true);
@@ -67,12 +79,14 @@ export default function ListDetailPage() {
     fetchItems();
   }, [fetchNote, fetchItems]);
 
-  async function handleAddItem(content: string) {
+  async function handleAddItem(raw: string) {
+    if (!raw.trim()) return;
+    const { itemType, content } = parseItemType(raw);
     if (!content.trim()) return;
     try {
       const item = await api.createItem(listId, {
         content: content.trim(),
-        item_type: newItemType,
+        item_type: itemType,
       });
       setItems((prev) => [...prev, item]);
     } catch {
@@ -181,7 +195,6 @@ export default function ListDetailPage() {
     }
   }
 
-  // Click on the empty area below items to focus the new line
   function handlePageClick(e: React.MouseEvent<HTMLDivElement>) {
     const target = e.target as HTMLElement;
     if (target === e.currentTarget) {
@@ -213,19 +226,6 @@ export default function ListDetailPage() {
         </Button>
 
         <div className="flex-1" />
-
-        {/* Type toggle */}
-        <button
-          onClick={() => setNewItemType(newItemType === "text" ? "checkbox" : "text")}
-          className="p-1.5 rounded hover:bg-muted transition-colors text-muted-foreground"
-          title={`New lines: ${newItemType === "text" ? "text" : "checkbox"}`}
-        >
-          {newItemType === "text" ? (
-            <Type className="h-4 w-4" />
-          ) : (
-            <CheckSquare className="h-4 w-4" />
-          )}
-        </button>
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -275,9 +275,8 @@ export default function ListDetailPage() {
         )}
       </div>
 
-      {/* Content area — click empty space to focus new line */}
+      {/* Content area */}
       <div className="flex-1 cursor-text" onClick={handlePageClick}>
-        {/* Items */}
         <div className="space-y-0.5">
           {items.map((item) => (
             <NoteItem
@@ -303,10 +302,9 @@ export default function ListDetailPage() {
           </button>
         )}
 
-        {/* New line — seamless, no border, just like typing on the page */}
+        {/* Seamless new line */}
         <NewLine
           ref={newLineRef}
-          itemType={newItemType}
           onSubmit={handleAddItem}
           isEmpty={items.length === 0}
         />
@@ -315,14 +313,11 @@ export default function ListDetailPage() {
   );
 }
 
-// Seamless new-line input that looks like part of the page
-import { forwardRef, useState as useStateInner } from "react";
-
 const NewLine = forwardRef<
   HTMLTextAreaElement,
-  { itemType: "text" | "checkbox"; onSubmit: (content: string) => void; isEmpty: boolean }
->(function NewLine({ itemType, onSubmit, isEmpty }, ref) {
-  const [value, setValue] = useStateInner("");
+  { onSubmit: (content: string) => void; isEmpty: boolean }
+>(function NewLine({ onSubmit, isEmpty }, ref) {
+  const [value, setValue] = useState("");
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -335,19 +330,14 @@ const NewLine = forwardRef<
   }
 
   return (
-    <div className="flex items-start gap-2 py-1.5 px-2">
-      {itemType === "checkbox" && (
-        <div className="mt-0.5 flex-shrink-0">
-          <div className="h-4 w-4 rounded-sm border border-muted-foreground/30" />
-        </div>
-      )}
+    <div className="py-1.5 px-2">
       <textarea
         ref={ref}
         value={value}
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={handleKeyDown}
-        placeholder={isEmpty ? "Start typing..." : ""}
-        className="w-full bg-transparent border-none outline-none resize-none text-sm min-h-[24px] placeholder:text-muted-foreground/40"
+        placeholder={isEmpty ? "Start typing... (use [ ] for checkboxes, **bold**, *italic*, # heading)" : ""}
+        className="w-full bg-transparent border-none outline-none resize-none text-sm min-h-[24px] leading-relaxed placeholder:text-muted-foreground/40"
         rows={1}
       />
     </div>

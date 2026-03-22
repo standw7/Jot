@@ -23,8 +23,9 @@ async function proxy(req: NextRequest) {
   });
 
   let body: BodyInit | null = null;
-  if (req.method !== "GET" && req.method !== "HEAD") {
+  if (req.method !== "GET" && req.method !== "HEAD" && req.method !== "DELETE") {
     body = await req.text();
+    if (!body) body = null;
   }
 
   try {
@@ -49,6 +50,11 @@ async function proxy(req: NextRequest) {
           redirect: "manual",
         });
       }
+    }
+
+    // 204 No Content cannot have a body
+    if (res.status === 204) {
+      return new NextResponse(null, { status: 204 });
     }
 
     const data = await res.text();
