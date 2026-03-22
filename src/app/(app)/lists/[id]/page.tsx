@@ -33,12 +33,11 @@ export default function ListDetailPage() {
   const [items, setItems] = useState<ListItem[]>([]);
   const [showChecked, setShowChecked] = useState(false);
   const [checkedCount, setCheckedCount] = useState(0);
-  const [newContent, setNewContent] = useState("");
   const [newItemType, setNewItemType] = useState<"text" | "checkbox">("text");
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editTitle, setEditTitle] = useState("");
   const [loading, setLoading] = useState(true);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const newLineRef = useRef<HTMLTextAreaElement>(null);
 
   const fetchNote = useCallback(async () => {
     try {
@@ -68,16 +67,14 @@ export default function ListDetailPage() {
     fetchItems();
   }, [fetchNote, fetchItems]);
 
-  async function handleAddItem() {
-    if (!newContent.trim()) return;
+  async function handleAddItem(content: string) {
+    if (!content.trim()) return;
     try {
       const item = await api.createItem(listId, {
-        content: newContent.trim(),
+        content: content.trim(),
         item_type: newItemType,
       });
       setItems((prev) => [...prev, item]);
-      setNewContent("");
-      inputRef.current?.focus();
     } catch {
       toast.error("Failed to add item");
     }
@@ -135,7 +132,6 @@ export default function ListDetailPage() {
     try {
       const updated = await api.toggleItemCheck(listId, itemId);
       if (updated.is_checked && !showChecked) {
-        // Animate out then remove
         setItems((prev) => prev.map((i) => (i.id === itemId ? { ...i, is_checked: true } : i)));
         setTimeout(() => {
           setItems((prev) => prev.filter((i) => i.id !== itemId));
@@ -185,6 +181,14 @@ export default function ListDetailPage() {
     }
   }
 
+  // Click on the empty area below items to focus the new line
+  function handlePageClick(e: React.MouseEvent<HTMLDivElement>) {
+    const target = e.target as HTMLElement;
+    if (target === e.currentTarget) {
+      newLineRef.current?.focus();
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -196,9 +200,9 @@ export default function ListDetailPage() {
   if (!note) return null;
 
   return (
-    <div className="max-w-2xl mx-auto p-6">
+    <div className="max-w-2xl mx-auto p-6 min-h-screen flex flex-col">
       {/* Header */}
-      <div className="flex items-center gap-3 mb-6">
+      <div className="flex items-center gap-3 mb-2">
         <Button
           variant="ghost"
           size="icon"
@@ -208,33 +212,20 @@ export default function ListDetailPage() {
           <ArrowLeft className="h-4 w-4" />
         </Button>
 
-        <div className="flex-1">
-          {isEditingTitle ? (
-            <Input
-              value={editTitle}
-              onChange={(e) => setEditTitle(e.target.value)}
-              onBlur={handleUpdateTitle}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handleUpdateTitle();
-                if (e.key === "Escape") {
-                  setEditTitle(note.name);
-                  setIsEditingTitle(false);
-                }
-              }}
-              className="text-xl font-bold border-none shadow-none px-0 h-auto"
-              autoFocus
-            />
+        <div className="flex-1" />
+
+        {/* Type toggle */}
+        <button
+          onClick={() => setNewItemType(newItemType === "text" ? "checkbox" : "text")}
+          className="p-1.5 rounded hover:bg-muted transition-colors text-muted-foreground"
+          title={`New lines: ${newItemType === "text" ? "text" : "checkbox"}`}
+        >
+          {newItemType === "text" ? (
+            <Type className="h-4 w-4" />
           ) : (
-            <h1
-              onClick={() => setIsEditingTitle(true)}
-              className="text-xl font-bold cursor-text hover:text-foreground/80 transition-colors"
-            >
-              {note.icon && <span className="mr-2">{note.icon}</span>}
-              {note.name}
-              {note.is_pinned && <Pin className="inline h-4 w-4 ml-2 text-muted-foreground" />}
-            </h1>
+            <CheckSquare className="h-4 w-4" />
           )}
-        </div>
+        </button>
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -255,61 +246,110 @@ export default function ListDetailPage() {
         </DropdownMenu>
       </div>
 
-      {/* Items */}
-      <div className="space-y-0.5 mb-4">
-        {items.map((item) => (
-          <NoteItem
-            key={item.id}
-            item={item}
-            onUpdate={(updates) => handleUpdateItem(item.id, updates)}
-            onDelete={() => handleDeleteItem(item.id)}
-            onToggleCheck={() => handleToggleCheck(item.id)}
-            onDeleteLink={(linkId) => handleDeleteLink(item.id, linkId)}
-            onDeleteImage={(imageId) => handleDeleteImage(item.id, imageId)}
+      {/* Title */}
+      <div className="mb-4 px-2">
+        {isEditingTitle ? (
+          <Input
+            value={editTitle}
+            onChange={(e) => setEditTitle(e.target.value)}
+            onBlur={handleUpdateTitle}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") handleUpdateTitle();
+              if (e.key === "Escape") {
+                setEditTitle(note.name);
+                setIsEditingTitle(false);
+              }
+            }}
+            className="text-2xl font-bold border-none shadow-none px-0 h-auto"
+            autoFocus
           />
-        ))}
+        ) : (
+          <h1
+            onClick={() => setIsEditingTitle(true)}
+            className="text-2xl font-bold cursor-text hover:text-foreground/80 transition-colors"
+          >
+            {note.icon && <span className="mr-2">{note.icon}</span>}
+            {note.name}
+            {note.is_pinned && <Pin className="inline h-4 w-4 ml-2 text-muted-foreground" />}
+          </h1>
+        )}
       </div>
 
-      {/* Show completed toggle */}
-      {checkedCount > 0 && (
-        <button
-          onClick={() => setShowChecked(!showChecked)}
-          className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors mb-4 px-2"
-        >
-          <ChevronDown className={`h-3.5 w-3.5 transition-transform ${showChecked ? "rotate-180" : ""}`} />
-          {showChecked ? "Hide" : "Show"} completed ({checkedCount})
-        </button>
-      )}
+      {/* Content area — click empty space to focus new line */}
+      <div className="flex-1 cursor-text" onClick={handlePageClick}>
+        {/* Items */}
+        <div className="space-y-0.5">
+          {items.map((item) => (
+            <NoteItem
+              key={item.id}
+              item={item}
+              onUpdate={(updates) => handleUpdateItem(item.id, updates)}
+              onDelete={() => handleDeleteItem(item.id)}
+              onToggleCheck={() => handleToggleCheck(item.id)}
+              onDeleteLink={(linkId) => handleDeleteLink(item.id, linkId)}
+              onDeleteImage={(imageId) => handleDeleteImage(item.id, imageId)}
+            />
+          ))}
+        </div>
 
-      {/* Add item input */}
-      <div className="flex items-center gap-2 p-2 border border-border rounded-lg bg-card">
-        {/* Type toggle */}
-        <button
-          onClick={() => setNewItemType(newItemType === "text" ? "checkbox" : "text")}
-          className="p-1.5 rounded hover:bg-muted transition-colors text-muted-foreground"
-          title={`Adding as ${newItemType === "text" ? "text" : "checkbox"} — click to toggle`}
-        >
-          {newItemType === "text" ? (
-            <Type className="h-4 w-4" />
-          ) : (
-            <CheckSquare className="h-4 w-4" />
-          )}
-        </button>
+        {/* Show completed toggle */}
+        {checkedCount > 0 && (
+          <button
+            onClick={() => setShowChecked(!showChecked)}
+            className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors my-3 px-2"
+          >
+            <ChevronDown className={`h-3.5 w-3.5 transition-transform ${showChecked ? "rotate-180" : ""}`} />
+            {showChecked ? "Hide" : "Show"} completed ({checkedCount})
+          </button>
+        )}
 
-        <Input
-          ref={inputRef}
-          value={newContent}
-          onChange={(e) => setNewContent(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              handleAddItem();
-            }
-          }}
-          placeholder={newItemType === "text" ? "Jot something down..." : "Add a checklist item..."}
-          className="border-none shadow-none"
+        {/* New line — seamless, no border, just like typing on the page */}
+        <NewLine
+          ref={newLineRef}
+          itemType={newItemType}
+          onSubmit={handleAddItem}
+          isEmpty={items.length === 0}
         />
       </div>
     </div>
   );
 }
+
+// Seamless new-line input that looks like part of the page
+import { forwardRef, useState as useStateInner } from "react";
+
+const NewLine = forwardRef<
+  HTMLTextAreaElement,
+  { itemType: "text" | "checkbox"; onSubmit: (content: string) => void; isEmpty: boolean }
+>(function NewLine({ itemType, onSubmit, isEmpty }, ref) {
+  const [value, setValue] = useStateInner("");
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      if (value.trim()) {
+        onSubmit(value);
+        setValue("");
+      }
+    }
+  }
+
+  return (
+    <div className="flex items-start gap-2 py-1.5 px-2">
+      {itemType === "checkbox" && (
+        <div className="mt-0.5 flex-shrink-0">
+          <div className="h-4 w-4 rounded-sm border border-muted-foreground/30" />
+        </div>
+      )}
+      <textarea
+        ref={ref}
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={handleKeyDown}
+        placeholder={isEmpty ? "Start typing..." : ""}
+        className="w-full bg-transparent border-none outline-none resize-none text-sm min-h-[24px] placeholder:text-muted-foreground/40"
+        rows={1}
+      />
+    </div>
+  );
+});
