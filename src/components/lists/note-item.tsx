@@ -6,25 +6,29 @@ import { Trash2, GripVertical } from "lucide-react";
 
 // ── Live Document ────────────────────────────────────────────
 // Renders the entire note as Obsidian-style live preview with
-// interactive checkboxes (click to toggle, drag to reorder, delete).
+// interactive checkboxes (click to toggle, drag to reorder/nest, delete).
 export function LiveDocument({
   content,
   onToggleCheckbox,
   onReorderLine,
+  onNestLine,
   onDeleteLine,
 }: {
   content: string;
   onToggleCheckbox: (lineIndex: number) => void;
   onReorderLine: (fromLine: number, toLine: number) => void;
+  onNestLine: (fromLine: number, targetLine: number) => void;
   onDeleteLine: (lineIndex: number) => void;
 }) {
   const lines = content.split("\n");
   const [draggedLine, setDraggedLine] = useState<number | null>(null);
   const [dragOverLine, setDragOverLine] = useState<number | null>(null);
+  const [dragNest, setDragNest] = useState(false);
 
   function handleDragEnd() {
     setDraggedLine(null);
     setDragOverLine(null);
+    setDragNest(false);
   }
 
   if (!content) {
@@ -34,6 +38,9 @@ export function LiveDocument({
       </div>
     );
   }
+
+  const isOver = (i: number) =>
+    dragOverLine === i && draggedLine !== null && draggedLine !== i;
 
   return (
     <div className="text-sm leading-relaxed">
@@ -45,15 +52,23 @@ export function LiveDocument({
           onToggleCheckbox={onToggleCheckbox}
           onDeleteLine={onDeleteLine}
           onDragStart={() => setDraggedLine(i)}
-          onDragOver={() => setDragOverLine(i)}
+          onDragHover={(nest) => {
+            setDragOverLine(i);
+            setDragNest(nest);
+          }}
           onDrop={() => {
             if (draggedLine !== null && draggedLine !== i) {
-              onReorderLine(draggedLine, i);
+              if (dragNest) {
+                onNestLine(draggedLine, i);
+              } else {
+                onReorderLine(draggedLine, i);
+              }
             }
             handleDragEnd();
           }}
           onDragEnd={handleDragEnd}
-          isDragOver={dragOverLine === i && draggedLine !== null && draggedLine !== i}
+          isDragOver={isOver(i) && !dragNest}
+          isDragNest={isOver(i) && dragNest}
         />
       ))}
     </div>
@@ -61,29 +76,28 @@ export function LiveDocument({
 }
 
 // ── Live Line ────────────────────────────────────────────────
-// Renders a single line with Obsidian-style formatting.
-// Checkbox lines (- [ ] / - [x]) get interactive checkbox, drag handle, delete.
-// All lines support drag-over drop zones for reordering checkboxes into them.
 function LiveLine({
   line,
   lineIndex,
   onToggleCheckbox,
   onDeleteLine,
   onDragStart,
-  onDragOver,
+  onDragHover,
   onDrop,
   onDragEnd,
   isDragOver,
+  isDragNest,
 }: {
   line: string;
   lineIndex: number;
   onToggleCheckbox: (lineIndex: number) => void;
   onDeleteLine: (lineIndex: number) => void;
   onDragStart: () => void;
-  onDragOver: () => void;
+  onDragHover: (nest: boolean) => void;
   onDrop: () => void;
   onDragEnd: () => void;
   isDragOver: boolean;
+  isDragNest: boolean;
 }) {
   // Drop zone wrapper for non-checkbox lines
   function dropZone(children: React.ReactNode) {
@@ -93,7 +107,7 @@ function LiveLine({
         onDragOver={(e) => {
           e.preventDefault();
           e.dataTransfer.dropEffect = "move";
-          onDragOver();
+          onDragHover(false);
         }}
         onDrop={(e) => {
           e.preventDefault();
@@ -109,16 +123,23 @@ function LiveLine({
   if (!line) return dropZone(<div className="h-[1.5em]">{"\u200B"}</div>);
 
   // Horizontal rule
-  if (/^-{3,}$/.test(line.trim())) return dropZone(<hr className="border-muted my-1" />);
+  if (/^-{3,}$/.test(line.trim()))
+    return dropZone(<hr className="border-muted my-1" />);
 
-  // Checkbox: - [ ] or - [x]  (must be checked BEFORE bullet list)
-  const cbMatch = line.match(/^- \[([ x])\] (.*)/);
+  // Checkbox: optional indent + - [ ] or - [x]  (must be before bullet)
+  const cbMatch = line.match(/^(\s*)(- \[([ x])\] )(.*)/);
   if (cbMatch) {
-    const isChecked = cbMatch[1] === "x";
+    const indentLevel = Math.floor(cbMatch[1].length / 2);
+    const isChecked = cbMatch[3] === "x";
     return (
       <div
-        className={`group/cb flex items-center gap-2 py-0.5 px-1 rounded-md hover:bg-accent/50 transition-all ${
-          isDragOver ? "border-t-2 border-primary" : ""
+        style={{ paddingLeft: `${indentLevel * 24}px` }}
+        className={`group/cb flex items-center gap-2 py-0.5 px-1 rounded-md transition-all ${
+          isDragNest
+            ? "bg-primary/10 ring-1 ring-primary/30 ring-inset"
+            : isDragOver
+              ? "border-t-2 border-primary"
+              : "hover:bg-accent/50"
         } ${isChecked ? "opacity-50" : ""}`}
         draggable
         onDragStart={(e) => {
@@ -128,7 +149,10 @@ function LiveLine({
         onDragOver={(e) => {
           e.preventDefault();
           e.dataTransfer.dropEffect = "move";
-          onDragOver();
+          // Top third = reorder (insert above), bottom = nest under
+          const rect = e.currentTarget.getBoundingClientRect();
+          const y = e.clientY - rect.top;
+          onDragHover(y > rect.height * 0.35);
         }}
         onDrop={(e) => {
           e.preventDefault();
@@ -154,7 +178,7 @@ function LiveLine({
         <span
           className={`flex-1 ${isChecked ? "line-through text-muted-foreground" : ""}`}
         >
-          <InlineMarkdown text={cbMatch[2]} />
+          <InlineMarkdown text={cbMatch[4]} />
         </span>
         <button
           onClick={(e) => {
@@ -198,24 +222,38 @@ function LiveLine({
     );
   }
 
-  // Bullet list
-  const bulletMatch = line.match(/^(- )(.*)/);
+  // Bullet list — render with • character, support nesting via indent
+  const bulletMatch = line.match(/^(\s*)(- )(.*)/);
   if (bulletMatch) {
+    const indentLevel = Math.floor(bulletMatch[1].length / 2);
     return dropZone(
-      <div>
-        <span className="text-muted-foreground/40">- </span>
-        <InlineMarkdown text={bulletMatch[2]} />
+      <div
+        className="flex items-start gap-1.5"
+        style={{ paddingLeft: `${indentLevel * 24}px` }}
+      >
+        <span className="text-muted-foreground select-none mt-[1px]">•</span>
+        <span>
+          <InlineMarkdown text={bulletMatch[3]} />
+        </span>
       </div>,
     );
   }
 
   // Numbered list
-  const numMatch = line.match(/^(\d+\. )(.*)/);
+  const numMatch = line.match(/^(\s*)(\d+\. )(.*)/);
   if (numMatch) {
+    const indentLevel = Math.floor(numMatch[1].length / 2);
     return dropZone(
-      <div>
-        <span className="text-muted-foreground/40">{numMatch[1]}</span>
-        <InlineMarkdown text={numMatch[2]} />
+      <div
+        className="flex items-start gap-1.5"
+        style={{ paddingLeft: `${indentLevel * 24}px` }}
+      >
+        <span className="text-muted-foreground select-none">
+          {numMatch[2].trim()}
+        </span>
+        <span>
+          <InlineMarkdown text={numMatch[3]} />
+        </span>
       </div>,
     );
   }
@@ -229,8 +267,6 @@ function LiveLine({
 }
 
 // ── Inline Markdown ──────────────────────────────────────────
-// Renders inline formatting: bold, italic, code, links, strikethrough.
-// Shows syntax characters dimmed with visual styling applied (Obsidian-style).
 function InlineMarkdown({ text }: { text: string }) {
   const regex =
     /(\*\*(.+?)\*\*)|(~~(.+?)~~)|(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)|(`(.+?)`)|\[(.+?)\]\((.+?)\)/g;
@@ -245,7 +281,6 @@ function InlineMarkdown({ text }: { text: string }) {
     }
 
     if (match[1]) {
-      // Bold: **text**
       parts.push(
         <span key={key++}>
           <span className="text-muted-foreground/40">**</span>
@@ -254,7 +289,6 @@ function InlineMarkdown({ text }: { text: string }) {
         </span>,
       );
     } else if (match[3]) {
-      // Strikethrough: ~~text~~
       parts.push(
         <span key={key++}>
           <span className="text-muted-foreground/40">~~</span>
@@ -263,7 +297,6 @@ function InlineMarkdown({ text }: { text: string }) {
         </span>,
       );
     } else if (match[5]) {
-      // Italic: *text*
       parts.push(
         <span key={key++}>
           <span className="text-muted-foreground/40">*</span>
@@ -272,7 +305,6 @@ function InlineMarkdown({ text }: { text: string }) {
         </span>,
       );
     } else if (match[6]) {
-      // Code: `text`
       parts.push(
         <span key={key++}>
           <span className="text-muted-foreground/40">`</span>
@@ -283,7 +315,6 @@ function InlineMarkdown({ text }: { text: string }) {
         </span>,
       );
     } else if (match[8] && match[9]) {
-      // Link: [text](url)
       const href = /^https?:\/\//.test(match[9])
         ? match[9]
         : `https://${match[9]}`;
