@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef, forwardRef } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import { NoteItem } from "@/components/lists/note-item";
 import {
   ArrowLeft,
@@ -22,21 +23,6 @@ import * as api from "@/lib/api";
 import { toast } from "sonner";
 import type { JotList, ListItem } from "@/lib/types";
 
-// Detect checkbox prefixes: "[ ]", "[] ", "- [ ]", "- [] "
-// Returns { isCheckbox, cleanContent } — strips the prefix if checkbox
-function parseItemType(raw: string): { itemType: "text" | "checkbox"; content: string } {
-  const trimmed = raw.trimStart();
-  // "- [ ] text" or "- [] text"
-  if (/^-\s*\[\s*\]\s/.test(trimmed)) {
-    return { itemType: "checkbox", content: trimmed.replace(/^-\s*\[\s*\]\s*/, "") };
-  }
-  // "[ ] text" or "[] text"
-  if (/^\[\s*\]\s/.test(trimmed)) {
-    return { itemType: "checkbox", content: trimmed.replace(/^\[\s*\]\s*/, "") };
-  }
-  return { itemType: "text", content: raw };
-}
-
 export default function ListDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -49,7 +35,17 @@ export default function ListDetailPage() {
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editTitle, setEditTitle] = useState("");
   const [loading, setLoading] = useState(true);
-  const newLineRef = useRef<HTMLTextAreaElement>(null);
+
+  // Editor state
+  const [editorMode, setEditorMode] = useState<"text" | "checkbox">("text");
+  const [textValue, setTextValue] = useState("");
+  const [cbValue, setCbValue] = useState("");
+  const textRef = useRef<HTMLTextAreaElement>(null);
+  const cbRef = useRef<HTMLInputElement>(null);
+
+  // DnD state
+  const [draggedId, setDraggedId] = useState<string | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
 
   const fetchNote = useCallback(async () => {
     try {
@@ -79,57 +75,41 @@ export default function ListDetailPage() {
     fetchItems();
   }, [fetchNote, fetchItems]);
 
-  async function handleAddItem(raw: string) {
-    if (!raw.trim()) return;
-    const { itemType, content } = parseItemType(raw);
+  // Focus checkbox input when entering checkbox mode
+  useEffect(() => {
+    if (editorMode === "checkbox") {
+      cbRef.current?.focus();
+    }
+  }, [editorMode]);
+
+  // ── Item CRUD ─────────────────────────────────────────────
+
+  async function addTextItem(content: string) {
     if (!content.trim()) return;
     try {
-      const item = await api.createItem(listId, {
-        content: content.trim(),
-        item_type: itemType,
-      });
+      const item = await api.createItem(listId, { content: content.trim(), item_type: "text" });
       setItems((prev) => [...prev, item]);
     } catch {
       toast.error("Failed to add item");
     }
   }
 
-  async function handleUpdateItem(itemId: string, updates: { content?: string; item_type?: "text" | "checkbox"; is_checked?: boolean }) {
+  async function addCheckboxItem(content: string) {
+    if (!content.trim()) return;
+    try {
+      const item = await api.createItem(listId, { content: content.trim(), item_type: "checkbox" });
+      setItems((prev) => [...prev, item]);
+    } catch {
+      toast.error("Failed to add item");
+    }
+  }
+
+  async function handleUpdateItem(itemId: string, updates: { content?: string; item_type?: "text" | "checkbox" }) {
     try {
       const updated = await api.updateItem(listId, itemId, updates);
       setItems((prev) => prev.map((i) => (i.id === itemId ? updated : i)));
     } catch {
       toast.error("Failed to update item");
-    }
-  }
-
-  async function handleDeleteLink(itemId: string, linkId: string) {
-    try {
-      await api.deleteItemLink(listId, itemId, linkId);
-      setItems((prev) =>
-        prev.map((i) =>
-          i.id === itemId
-            ? { ...i, links: (i.links ?? []).filter((l) => l.id !== linkId) }
-            : i
-        )
-      );
-    } catch {
-      toast.error("Failed to delete link");
-    }
-  }
-
-  async function handleDeleteImage(itemId: string, imageId: string) {
-    try {
-      await api.deleteItemImage(listId, itemId, imageId);
-      setItems((prev) =>
-        prev.map((i) =>
-          i.id === itemId
-            ? { ...i, images: (i.images ?? []).filter((img) => img.id !== imageId) }
-            : i
-        )
-      );
-    } catch {
-      toast.error("Failed to delete image");
     }
   }
 
@@ -153,14 +133,32 @@ export default function ListDetailPage() {
         }, 500);
       } else {
         setItems((prev) => prev.map((i) => (i.id === itemId ? updated : i)));
-        if (!updated.is_checked) {
-          setCheckedCount((c) => Math.max(0, c - 1));
-        }
+        if (!updated.is_checked) setCheckedCount((c) => Math.max(0, c - 1));
       }
     } catch {
       toast.error("Failed to update item");
     }
   }
+
+  async function handleDeleteLink(itemId: string, linkId: string) {
+    try {
+      await api.deleteItemLink(listId, itemId, linkId);
+      setItems((prev) => prev.map((i) => i.id === itemId ? { ...i, links: (i.links ?? []).filter((l) => l.id !== linkId) } : i));
+    } catch {
+      toast.error("Failed to delete link");
+    }
+  }
+
+  async function handleDeleteImage(itemId: string, imageId: string) {
+    try {
+      await api.deleteItemImage(listId, itemId, imageId);
+      setItems((prev) => prev.map((i) => i.id === itemId ? { ...i, images: (i.images ?? []).filter((img) => img.id !== imageId) } : i));
+    } catch {
+      toast.error("Failed to delete image");
+    }
+  }
+
+  // ── Note actions ──────────────────────────────────────────
 
   async function handleUpdateTitle() {
     if (!editTitle.trim() || editTitle.trim() === note?.name) {
@@ -186,7 +184,7 @@ export default function ListDetailPage() {
     }
   }
 
-  async function handleDelete() {
+  async function handleDeleteNote() {
     try {
       await api.deleteList(listId);
       router.push("/lists");
@@ -195,10 +193,92 @@ export default function ListDetailPage() {
     }
   }
 
+  // ── Drag and Drop ─────────────────────────────────────────
+
+  function handleDrop(targetId: string) {
+    if (!draggedId || draggedId === targetId) return;
+    const newItems = [...items];
+    const dragIdx = newItems.findIndex((i) => i.id === draggedId);
+    const dropIdx = newItems.findIndex((i) => i.id === targetId);
+    if (dragIdx === -1 || dropIdx === -1) return;
+
+    const [moved] = newItems.splice(dragIdx, 1);
+    newItems.splice(dropIdx, 0, moved);
+    setItems(newItems);
+    setDraggedId(null);
+    setDragOverId(null);
+
+    // Persist new order
+    api.reorderItems(listId, newItems.map((i) => i.id)).catch(() => {
+      toast.error("Failed to reorder");
+      fetchItems(); // revert on error
+    });
+  }
+
+  // ── Editor: text mode ─────────────────────────────────────
+
+  function handleTextChange(value: string) {
+    const lines = value.split("\n");
+    const lastLine = lines[lines.length - 1];
+
+    // Detect [] or [ ] at start of line → enter checkbox mode
+    const match = lastLine.match(/^\s*\[\s*\]\s*(.*)/);
+    if (match) {
+      // Save any text above the [] line
+      const textAbove = lines.slice(0, -1).join("\n").trim();
+      if (textAbove) addTextItem(textAbove);
+      setTextValue("");
+
+      // Switch to checkbox mode, carry over any text after []
+      setEditorMode("checkbox");
+      setCbValue(match[1] || "");
+      return;
+    }
+
+    setTextValue(value);
+  }
+
+  function handleTextBlur() {
+    if (textValue.trim()) {
+      addTextItem(textValue.trim());
+      setTextValue("");
+    }
+  }
+
+  // ── Editor: checkbox mode ─────────────────────────────────
+
+  function handleCbKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+
+    if (cbValue.trim()) {
+      addCheckboxItem(cbValue.trim());
+      setCbValue("");
+    } else {
+      // Empty enter → exit checkbox mode
+      setEditorMode("text");
+      setCbValue("");
+      // Focus text area after mode switch
+      setTimeout(() => textRef.current?.focus(), 0);
+    }
+  }
+
+  // ── Auto-resize textarea ──────────────────────────────────
+
+  function autoResize(el: HTMLTextAreaElement) {
+    el.style.height = "auto";
+    el.style.height = el.scrollHeight + "px";
+  }
+
+  // Click empty area to focus editor
   function handlePageClick(e: React.MouseEvent<HTMLDivElement>) {
     const target = e.target as HTMLElement;
     if (target === e.currentTarget) {
-      newLineRef.current?.focus();
+      if (editorMode === "checkbox") {
+        cbRef.current?.focus();
+      } else {
+        textRef.current?.focus();
+      }
     }
   }
 
@@ -216,17 +296,10 @@ export default function ListDetailPage() {
     <div className="max-w-2xl mx-auto p-6 min-h-screen flex flex-col">
       {/* Header */}
       <div className="flex items-center gap-3 mb-2">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8"
-          onClick={() => router.push("/lists")}
-        >
+        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => router.push("/lists")}>
           <ArrowLeft className="h-4 w-4" />
         </Button>
-
         <div className="flex-1" />
-
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon" className="h-8 w-8">
@@ -238,7 +311,7 @@ export default function ListDetailPage() {
               <Pin className="h-4 w-4 mr-2" />
               {note.is_pinned ? "Unpin" : "Pin"}
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={handleDelete} className="text-destructive">
+            <DropdownMenuItem onClick={handleDeleteNote} className="text-destructive">
               <Trash2 className="h-4 w-4 mr-2" />
               Delete
             </DropdownMenuItem>
@@ -255,10 +328,7 @@ export default function ListDetailPage() {
             onBlur={handleUpdateTitle}
             onKeyDown={(e) => {
               if (e.key === "Enter") handleUpdateTitle();
-              if (e.key === "Escape") {
-                setEditTitle(note.name);
-                setIsEditingTitle(false);
-              }
+              if (e.key === "Escape") { setEditTitle(note.name); setIsEditingTitle(false); }
             }}
             className="text-2xl font-bold border-none shadow-none px-0 h-auto"
             autoFocus
@@ -277,6 +347,7 @@ export default function ListDetailPage() {
 
       {/* Content area */}
       <div className="flex-1 cursor-text" onClick={handlePageClick}>
+        {/* Existing items */}
         <div className="space-y-0.5">
           {items.map((item) => (
             <NoteItem
@@ -287,6 +358,12 @@ export default function ListDetailPage() {
               onToggleCheck={() => handleToggleCheck(item.id)}
               onDeleteLink={(linkId) => handleDeleteLink(item.id, linkId)}
               onDeleteImage={(imageId) => handleDeleteImage(item.id, imageId)}
+              // DnD only for checkbox items
+              onDragStart={() => setDraggedId(item.id)}
+              onDragOver={(e) => { e.preventDefault(); setDragOverId(item.id); }}
+              onDrop={() => handleDrop(item.id)}
+              onDragEnd={() => { setDraggedId(null); setDragOverId(null); }}
+              isDragOver={dragOverId === item.id && draggedId !== item.id}
             />
           ))}
         </div>
@@ -302,44 +379,37 @@ export default function ListDetailPage() {
           </button>
         )}
 
-        {/* Seamless new line */}
-        <NewLine
-          ref={newLineRef}
-          onSubmit={handleAddItem}
-          isEmpty={items.length === 0}
-        />
+        {/* ── Editor Area ─────────────────────────────────── */}
+        <div className="px-2 py-1">
+          {editorMode === "text" ? (
+            <textarea
+              ref={textRef}
+              value={textValue}
+              onChange={(e) => {
+                handleTextChange(e.target.value);
+                autoResize(e.target);
+              }}
+              onBlur={handleTextBlur}
+              placeholder={items.length === 0 ? "Start typing... (type [] for a checklist)" : ""}
+              className="w-full bg-transparent border-none outline-none resize-none text-sm min-h-[24px] leading-relaxed placeholder:text-muted-foreground/40"
+              rows={1}
+            />
+          ) : (
+            <div className="flex items-center gap-2">
+              <Checkbox disabled className="h-4 w-4 flex-shrink-0 opacity-50" />
+              <input
+                ref={cbRef}
+                value={cbValue}
+                onChange={(e) => setCbValue(e.target.value)}
+                onKeyDown={handleCbKeyDown}
+                placeholder="Add item... (press Enter, empty Enter to exit)"
+                className="flex-1 bg-transparent border-none outline-none text-sm placeholder:text-muted-foreground/40"
+                autoFocus
+              />
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
 }
-
-const NewLine = forwardRef<
-  HTMLTextAreaElement,
-  { onSubmit: (content: string) => void; isEmpty: boolean }
->(function NewLine({ onSubmit, isEmpty }, ref) {
-  const [value, setValue] = useState("");
-
-  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      if (value.trim()) {
-        onSubmit(value);
-        setValue("");
-      }
-    }
-  }
-
-  return (
-    <div className="py-1.5 px-2">
-      <textarea
-        ref={ref}
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        onKeyDown={handleKeyDown}
-        placeholder={isEmpty ? "Start typing... (use [ ] for checkboxes, **bold**, *italic*, # heading)" : ""}
-        className="w-full bg-transparent border-none outline-none resize-none text-sm min-h-[24px] leading-relaxed placeholder:text-muted-foreground/40"
-        rows={1}
-      />
-    </div>
-  );
-});

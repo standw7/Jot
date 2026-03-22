@@ -179,6 +179,13 @@ export async function toggleItemCheck(listId: string, itemId: string): Promise<L
   return request(`/lists/${listId}/items/${itemId}/check`, { method: "POST" });
 }
 
+export async function reorderItems(listId: string, itemIds: string[]): Promise<void> {
+  return request(`/lists/${listId}/items/reorder`, {
+    method: "POST",
+    body: JSON.stringify({ item_ids: itemIds }),
+  });
+}
+
 // ── Item Links ───────────────────────────────────────────────
 
 export async function addItemLink(
