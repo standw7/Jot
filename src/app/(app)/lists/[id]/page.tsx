@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useLayoutEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { flushSync } from "react-dom";
 import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -64,20 +65,15 @@ export default function ListDetailPage() {
     return end;
   }
 
-  const pendingCursor = useRef<number | null>(null);
-
-  function setCursor(pos: number) {
-    pendingCursor.current = pos;
-  }
-
-  // Apply pending cursor position synchronously after React commits the new doc
-  useLayoutEffect(() => {
-    if (pendingCursor.current !== null && textareaRef.current) {
-      textareaRef.current.selectionStart = pendingCursor.current;
-      textareaRef.current.selectionEnd = pendingCursor.current;
-      pendingCursor.current = null;
+  /** Force synchronous render then set cursor — prevents React from resetting it. */
+  function setDocAndCursor(newValue: string, pos: number) {
+    flushSync(() => setDoc(newValue));
+    if (textareaRef.current) {
+      textareaRef.current.selectionStart = pos;
+      textareaRef.current.selectionEnd = pos;
+      autoResize(textareaRef.current);
     }
-  }, [doc]);
+  }
 
   function autoResize(el: HTMLTextAreaElement) {
     el.style.height = "auto";
@@ -224,6 +220,47 @@ export default function ListDetailPage() {
     saveDocument(newDoc);
   }
 
+  // ── Image paste ────────────────────────────────────────────
+
+  async function handlePaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
+    const items = Array.from(e.clipboardData.items);
+    const imageItem = items.find((i) => i.type.startsWith("image/"));
+    if (!imageItem) return;
+
+    e.preventDefault();
+    const file = imageItem.getAsFile();
+    if (!file) return;
+
+    // Ensure the document item exists
+    let itemId = savedItemIds[0];
+    if (!itemId) {
+      const item = await api.createItem(listId, {
+        content: doc || "",
+        item_type: "text",
+      });
+      itemId = item.id;
+      setSavedItemIds([itemId]);
+    }
+
+    try {
+      const image = await api.uploadItemImage(listId, itemId, file);
+      const imageUrl = `/api/backend/images/${image.filename}`;
+      const imgMarkdown = `![${image.original_name}](${imageUrl})`;
+
+      // Insert at cursor position
+      const el = textareaRef.current;
+      const pos = el?.selectionStart ?? doc.length;
+      const before = doc.slice(0, pos);
+      const after = doc.slice(pos);
+      const newLine = before.endsWith("\n") || before === "" ? "" : "\n";
+      const newDoc = before + newLine + imgMarkdown + "\n" + after;
+      setDoc(newDoc);
+      saveDocument(newDoc);
+    } catch {
+      toast.error("Failed to upload image");
+    }
+  }
+
   // ── Textarea editing ───────────────────────────────────────
 
   function handleDocChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
@@ -263,8 +300,7 @@ export default function ListDetailPage() {
       }
 
       const newDoc = value.slice(0, lineStart) + newLine + value.slice(lineEnd);
-      setDoc(newDoc);
-      setCursor(Math.max(lineStart, selectionStart + delta));
+      setDocAndCursor(newDoc, Math.max(lineStart, selectionStart + delta));
       return;
     }
 
@@ -286,17 +322,11 @@ export default function ListDetailPage() {
           const newLine = indent.slice(2) + "- [ ] ";
           const newDoc =
             value.slice(0, lineStart) + newLine + value.slice(lineEnd);
-          setDoc(newDoc);
-          setCursor(lineStart + newLine.length);
+          setDocAndCursor(newDoc, lineStart + newLine.length);
         } else {
-          // Root level → remove empty checkbox, exit checkbox mode
-          let rmStart = lineStart;
-          let rmEnd = lineEnd;
-          if (lineStart > 0) rmStart -= 1; // remove preceding newline
-          else if (lineEnd < value.length) rmEnd += 1;
-          const newDoc = value.slice(0, rmStart) + value.slice(rmEnd);
-          setDoc(newDoc);
-          setCursor(rmStart);
+          // Root level → clear checkbox syntax, leave empty line
+          const newDoc = value.slice(0, lineStart) + value.slice(lineEnd);
+          setDocAndCursor(newDoc, lineStart);
         }
       } else {
         // Has content → split at cursor, new unchecked checkbox at same indent
@@ -313,8 +343,7 @@ export default function ListDetailPage() {
           "\n" +
           added +
           value.slice(lineEnd);
-        setDoc(newDoc);
-        setCursor(lineStart + kept.length + 1 + indent.length + 6);
+        setDocAndCursor(newDoc, lineStart + kept.length + 1 + indent.length + 6);
       }
       return;
     }
@@ -328,7 +357,13 @@ export default function ListDetailPage() {
 
   function handleDocBlur() {
     setIsEditing(false);
-    saveDocument(doc);
+    // Remove empty checkboxes on blur
+    const cleaned = doc
+      .split("\n")
+      .filter((line) => !/^\s*- \[ \]\s*$/.test(line))
+      .join("\n");
+    setDoc(cleaned);
+    saveDocument(cleaned);
   }
 
   // ── Note actions ───────────────────────────────────────────
@@ -362,7 +397,9 @@ export default function ListDetailPage() {
   async function handleDeleteNote() {
     try {
       await api.deleteList(listId);
-      router.push("/lists");
+      router.push(
+        note?.folder_id ? `/lists?folder=${note.folder_id}` : "/lists",
+      );
     } catch {
       toast.error("Failed to delete note");
     }
@@ -388,7 +425,7 @@ export default function ListDetailPage() {
           variant="ghost"
           size="icon"
           className="h-8 w-8"
-          onClick={() => router.push("/lists")}
+          onClick={() => router.back()}
         >
           <ArrowLeft className="h-4 w-4" />
         </Button>
@@ -457,6 +494,7 @@ export default function ListDetailPage() {
             value={doc}
             onChange={handleDocChange}
             onKeyDown={handleDocKeyDown}
+            onPaste={handlePaste}
             onBlur={handleDocBlur}
             className="w-full bg-transparent border-none outline-none resize-none text-sm min-h-[200px] leading-relaxed placeholder:text-muted-foreground/40 font-mono"
             placeholder="Start typing... (use - [ ] for checkboxes, or type [])"
