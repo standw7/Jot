@@ -1,3 +1,5 @@
+import re
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -12,7 +14,7 @@ router = APIRouter(prefix="/lists", tags=["lists"])
 
 
 def _enrich_list(jot_list: JotList, db: Session) -> dict:
-    """Add item_count and checked_count to a list response."""
+    """Add item_count, checked_count, and preview to a list response."""
     data = JotListResponse.model_validate(jot_list).model_dump()
     total = db.query(func.count(ListItem.id)).filter(ListItem.list_id == jot_list.id).scalar() or 0
     checked = db.query(func.count(ListItem.id)).filter(
@@ -20,6 +22,28 @@ def _enrich_list(jot_list: JotList, db: Session) -> dict:
     ).scalar() or 0
     data["item_count"] = total
     data["checked_count"] = checked
+
+    # Content preview — first item's content, stripped of markdown syntax
+    first_item = db.query(ListItem.content).filter(
+        ListItem.list_id == jot_list.id,
+    ).order_by(ListItem.sort_order).first()
+    if first_item and first_item.content:
+        # Take first non-empty line, strip checkbox/bullet prefixes
+        lines = [l.strip() for l in first_item.content.split("\n") if l.strip()]
+        preview = ""
+        for line in lines:
+            # Strip checkbox prefix
+            clean = re.sub(r"^- \[[ x]\] ", "", line)
+            # Strip bullet prefix
+            clean = re.sub(r"^- ", "", clean)
+            # Strip heading prefix
+            clean = re.sub(r"^#{1,3} ", "", clean)
+            if clean:
+                preview = clean[:120]
+                break
+        data["preview"] = preview or None
+    else:
+        data["preview"] = None
     return data
 
 

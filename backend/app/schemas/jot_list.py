@@ -35,6 +35,7 @@ class JotListResponse(BaseModel):
     sort_order: int
     item_count: int = 0
     checked_count: int = 0
+    preview: str | None = None
     created_at: datetime
     updated_at: datetime
 

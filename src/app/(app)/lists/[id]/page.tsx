@@ -165,6 +165,22 @@ export default function ListDetailPage() {
     saveDocument(newDoc);
   }
 
+  function handleOutdentLine(lineIndex: number) {
+    const lines = doc.split("\n");
+    const line = lines[lineIndex];
+    const indent = line.match(/^(\s*)/)?.[1].length ?? 0;
+    if (indent < 2) return; // already at root
+    // Remove 2 spaces of indent from this line and its children
+    const end = getChildrenEnd(lines, lineIndex);
+    for (let i = lineIndex; i < end; i++) {
+      const ws = lines[i].match(/^(\s*)/)?.[1].length ?? 0;
+      lines[i] = lines[i].slice(Math.min(2, ws));
+    }
+    const newDoc = lines.join("\n");
+    setDoc(newDoc);
+    saveDocument(newDoc);
+  }
+
   function handleDeleteLine(lineIndex: number) {
     const lines = doc.split("\n");
     const end = getChildrenEnd(lines, lineIndex);
@@ -506,6 +522,7 @@ export default function ListDetailPage() {
             onReorderLine={handleReorderLine}
             onNestLine={handleNestLine}
             onDeleteLine={handleDeleteLine}
+            onOutdentLine={handleOutdentLine}
           />
         )}
       </div>

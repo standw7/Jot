@@ -45,6 +45,7 @@ export interface JotList {
   updated_at: string;
   item_count?: number;
   checked_count?: number;
+  preview?: string | null;
   linkwarden_collections?: LinkwardenCollection[];
 }
 

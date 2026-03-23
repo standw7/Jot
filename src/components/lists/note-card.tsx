@@ -32,12 +32,12 @@ export function NoteCard({ note, onClick, onDelete, onTogglePin }: NoteCardProps
           {note.description && (
             <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{note.description}</p>
           )}
-          <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground">
-            <span>{note.item_count} items</span>
-            {(note.checked_count ?? 0) > 0 && (
-              <span>({note.checked_count} done)</span>
-            )}
-          </div>
+          {note.preview && (
+            <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{note.preview}</p>
+          )}
+          <p className="text-xs text-muted-foreground/60 mt-1.5">
+            {new Date(note.updated_at).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
+          </p>
         </div>
 
         <DropdownMenu>

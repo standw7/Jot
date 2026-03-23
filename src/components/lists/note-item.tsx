@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Trash2, GripVertical } from "lucide-react";
+import { Trash2, GripVertical, ArrowLeftToLine } from "lucide-react";
 
 // ── Live Document ────────────────────────────────────────────
 // Renders the entire note as Obsidian-style live preview with
@@ -13,12 +13,14 @@ export function LiveDocument({
   onReorderLine,
   onNestLine,
   onDeleteLine,
+  onOutdentLine,
 }: {
   content: string;
   onToggleCheckbox: (lineIndex: number) => void;
   onReorderLine: (fromLine: number, toLine: number) => void;
   onNestLine: (fromLine: number, targetLine: number) => void;
   onDeleteLine: (lineIndex: number) => void;
+  onOutdentLine: (lineIndex: number) => void;
 }) {
   const lines = content.split("\n");
   const [draggedLine, setDraggedLine] = useState<number | null>(null);
@@ -51,6 +53,7 @@ export function LiveDocument({
           lineIndex={i}
           onToggleCheckbox={onToggleCheckbox}
           onDeleteLine={onDeleteLine}
+          onOutdentLine={onOutdentLine}
           onDragStart={() => setDraggedLine(i)}
           onDragHover={(nest) => {
             setDragOverLine(i);
@@ -81,6 +84,7 @@ function LiveLine({
   lineIndex,
   onToggleCheckbox,
   onDeleteLine,
+  onOutdentLine,
   onDragStart,
   onDragHover,
   onDrop,
@@ -92,6 +96,7 @@ function LiveLine({
   lineIndex: number;
   onToggleCheckbox: (lineIndex: number) => void;
   onDeleteLine: (lineIndex: number) => void;
+  onOutdentLine: (lineIndex: number) => void;
   onDragStart: () => void;
   onDragHover: (nest: boolean) => void;
   onDrop: () => void;
@@ -180,6 +185,18 @@ function LiveLine({
         >
           <InlineMarkdown text={cbMatch[4]} />
         </span>
+        {indentLevel > 0 && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onOutdentLine(lineIndex);
+            }}
+            className="opacity-0 group-hover/cb:opacity-100 p-0.5 text-muted-foreground hover:text-muted-foreground/80 transition-all flex-shrink-0"
+            title="Outdent"
+          >
+            <ArrowLeftToLine className="h-3.5 w-3.5" />
+          </button>
+        )}
         <button
           onClick={(e) => {
             e.stopPropagation();
@@ -254,6 +271,21 @@ function LiveLine({
         <span>
           <InlineMarkdown text={numMatch[3]} />
         </span>
+      </div>,
+    );
+  }
+
+  // Image: ![alt](url)
+  const imgMatch = line.match(/^!\[([^\]]*)\]\(([^)]+)\)/);
+  if (imgMatch) {
+    return dropZone(
+      <div className="my-2">
+        <img
+          src={imgMatch[2]}
+          alt={imgMatch[1]}
+          className="max-w-full rounded-lg max-h-[400px] object-contain"
+          onClick={(e) => e.stopPropagation()}
+        />
       </div>,
     );
   }
