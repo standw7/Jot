@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useRouter, usePathname } from "next/navigation";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { NoteCard } from "@/components/lists/note-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -40,10 +40,13 @@ import type { Folder, JotList } from "@/lib/types";
 
 export default function ListsPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { logout } = useAuth();
   const [folders, setFolders] = useState<Folder[]>([]);
   const [notes, setNotes] = useState<JotList[]>([]);
-  const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
+  const [currentFolderId, setCurrentFolderId] = useState<string | null>(
+    searchParams.get("folder"),
+  );
   const [loading, setLoading] = useState(true);
   const [showNewNote, setShowNewNote] = useState(false);
   const [showNewFolder, setShowNewFolder] = useState(false);
@@ -102,13 +105,13 @@ export default function ListsPage() {
   async function handleCreateNote() {
     if (!newNoteName.trim()) return;
     try {
-      const note = await api.createList({
+      await api.createList({
         name: newNoteName.trim(),
         folder_id: currentFolderId,
       });
       setShowNewNote(false);
       setNewNoteName("");
-      router.push(`/lists/${note.id}`);
+      fetchNotes();
     } catch {
       toast.error("Failed to create note");
     }
@@ -323,8 +326,11 @@ export default function ListsPage() {
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem onClick={(e) => {
                           e.stopPropagation();
-                          setRenamingFolderId(folder.id);
-                          setRenameFolderValue(folder.name);
+                          // Defer so Radix finishes focus-restore before input appears
+                          requestAnimationFrame(() => {
+                            setRenamingFolderId(folder.id);
+                            setRenameFolderValue(folder.name);
+                          });
                         }}>
                           <Pencil className="h-4 w-4 mr-2" />
                           Rename
