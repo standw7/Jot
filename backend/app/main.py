@@ -23,6 +23,12 @@ def _run_migrations():
                 conn.execute(text(
                     "ALTER TABLE list_items ADD COLUMN item_type VARCHAR(20) DEFAULT 'text' NOT NULL"
                 ))
+        if "lists" in inspector.get_table_names():
+            columns = {c["name"] for c in inspector.get_columns("lists")}
+            if "last_opened_at" not in columns:
+                conn.execute(text(
+                    "ALTER TABLE lists ADD COLUMN last_opened_at DATETIME DEFAULT NULL"
+                ))
 
 
 @asynccontextmanager

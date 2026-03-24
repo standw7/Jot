@@ -26,6 +26,7 @@ import {
   MoreHorizontal,
   Trash2,
   Pencil,
+  ArrowUpDown,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -52,6 +53,7 @@ export default function ListsPage() {
   const [showNewFolder, setShowNewFolder] = useState(false);
   const [newNoteName, setNewNoteName] = useState("");
   const [newFolderName, setNewFolderName] = useState("");
+  const [sortBy, setSortBy] = useState<"recent" | "name">("recent");
 
   // Folder rename
   const [renamingFolderId, setRenamingFolderId] = useState<string | null>(null);
@@ -96,9 +98,20 @@ export default function ListsPage() {
     : folders;
 
   // Filter notes: when at root, only show unfiled notes
-  const displayNotes = currentFolderId
+  const filteredNotes = currentFolderId
     ? notes
     : notes.filter((n) => !n.folder_id);
+
+  // Sort: pinned first, then by chosen sort
+  const displayNotes = [...filteredNotes].sort((a, b) => {
+    // Pinned always on top
+    if (a.is_pinned !== b.is_pinned) return a.is_pinned ? -1 : 1;
+    if (sortBy === "name") return a.name.localeCompare(b.name);
+    // "recent" — sort by last_opened_at descending
+    const aTime = a.last_opened_at ?? a.created_at;
+    const bTime = b.last_opened_at ?? b.created_at;
+    return new Date(bTime).getTime() - new Date(aTime).getTime();
+  });
 
   // ── Actions ───────────────────────────────────────────────
 
@@ -241,6 +254,16 @@ export default function ListsPage() {
             </h1>
           </div>
           <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setSortBy(sortBy === "recent" ? "name" : "recent")}
+              className="text-muted-foreground"
+              title={sortBy === "recent" ? "Sorted by recently opened" : "Sorted by name"}
+            >
+              <ArrowUpDown className="h-4 w-4 mr-1" />
+              {sortBy === "recent" ? "Recent" : "A-Z"}
+            </Button>
             <Button variant="outline" size="sm" onClick={() => setShowNewFolder(true)}>
               <FolderPlus className="h-4 w-4 mr-1" />
               New Folder

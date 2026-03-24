@@ -38,5 +38,6 @@ class JotListResponse(BaseModel):
     preview: str | None = None
     created_at: datetime
     updated_at: datetime
+    last_opened_at: datetime | None = None
 
     model_config = {"from_attributes": True}

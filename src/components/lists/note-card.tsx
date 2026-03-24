@@ -9,6 +9,12 @@ import {
 } from "@/components/ui/dropdown-menu";
 import type { JotList } from "@/lib/types";
 
+const dateFmt: Intl.DateTimeFormatOptions = {
+  month: "short",
+  day: "numeric",
+  year: "numeric",
+};
+
 interface NoteCardProps {
   note: JotList;
   onClick: () => void;
@@ -17,6 +23,11 @@ interface NoteCardProps {
 }
 
 export function NoteCard({ note, onClick, onDelete, onTogglePin }: NoteCardProps) {
+  const created = new Date(note.created_at).toLocaleDateString(undefined, dateFmt);
+  const opened = note.last_opened_at
+    ? new Date(note.last_opened_at).toLocaleDateString(undefined, dateFmt)
+    : null;
+
   return (
     <div
       onClick={onClick}
@@ -35,9 +46,10 @@ export function NoteCard({ note, onClick, onDelete, onTogglePin }: NoteCardProps
           {note.preview && (
             <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{note.preview}</p>
           )}
-          <p className="text-xs text-muted-foreground/60 mt-1.5">
-            {new Date(note.updated_at).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
-          </p>
+          <div className="flex items-center gap-3 mt-1.5 text-xs text-muted-foreground/60">
+            <span>Created {created}</span>
+            {opened && <span>Opened {opened}</span>}
+          </div>
         </div>
 
         <DropdownMenu>

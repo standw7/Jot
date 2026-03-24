@@ -1,4 +1,5 @@
 import re
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func
@@ -103,6 +104,10 @@ def get_list(
     ).first()
     if not jot_list:
         raise HTTPException(status_code=404, detail="List not found")
+    # Touch last_opened_at
+    jot_list.last_opened_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(jot_list)
     return _enrich_list(jot_list, db)
 
 

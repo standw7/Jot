@@ -43,6 +43,7 @@ export interface JotList {
   sort_order: number;
   created_at: string;
   updated_at: string;
+  last_opened_at: string | null;
   item_count?: number;
   checked_count?: number;
   preview?: string | null;

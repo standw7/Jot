@@ -441,7 +441,11 @@ export default function ListDetailPage() {
           variant="ghost"
           size="icon"
           className="h-8 w-8"
-          onClick={() => router.back()}
+          onClick={() =>
+            router.push(
+              note?.folder_id ? `/lists?folder=${note.folder_id}` : "/lists",
+            )
+          }
         >
           <ArrowLeft className="h-4 w-4" />
         </Button>
@@ -497,6 +501,14 @@ export default function ListDetailPage() {
             )}
           </h1>
         )}
+        <p className="text-xs text-muted-foreground/50 mt-1">
+          Created{" "}
+          {new Date(note.created_at).toLocaleDateString(undefined, {
+            month: "long",
+            day: "numeric",
+            year: "numeric",
+          })}
+        </p>
       </div>
 
       {/* Document */}
